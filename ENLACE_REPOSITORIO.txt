@@ -2,4 +2,4 @@ Evidencia: GA7-220501096-AA5-EV01
 Aprendiz: Eliza Palacio
 
 Enlace del repositorio en GitHub:
-https://github.com/elizapalacio2003-dev/GA7-220501096-AA5-EV01.git
+https://github.com/elizapalacio2003-dev/GA7-220501096-AA5-EV01
