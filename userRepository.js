@@ -1,52 +1,50 @@
 // userRepository.js
 // -----------------------------------------------------------------------
-// Este módulo funciona como una pequeña "base de datos" basada en un
-// archivo JSON (data/usuarios.json). Permite leer y guardar los
-// usuarios registrados sin necesidad de instalar un motor de base de
-// datos externo, lo cual es suficiente para el alcance de esta
-// evidencia académica.
+// Persistencia de usuarios en la base de datos MySQL alojada en Railway
 // -----------------------------------------------------------------------
 
-const fs = require('fs');
-const path = require('path');
+const mysql = require('mysql2/promise');
 
-const RUTA_ARCHIVO = path.join(__dirname, 'data', 'usuarios.json');
+// Cadena de conexión a MySQL en Railway (reemplaza con tu variable de entorno o URL real)
+const connectionUri = process.env.MYSQL_URL || 'mysql://root:KVbOysIaWIdhpxComTgYwsCMsrAKCdjY@metro.proxy.rlwy.net:45595/railway';
 
-// Si el archivo de usuarios no existe todavía, lo creamos vacío
-function asegurarArchivo() {
-  if (!fs.existsSync(RUTA_ARCHIVO)) {
-    fs.writeFileSync(RUTA_ARCHIVO, JSON.stringify([], null, 2), 'utf-8');
+// Creación del pool de conexiones
+const pool = mysql.createPool(connectionUri);
+
+/**
+ * Busca un usuario por su nombre exacto en la tabla 'usuarios'
+ * @param {string} usuario - Nombre del usuario a buscar
+ * @returns {Promise<Object|null>} - Retorna el objeto del usuario o null si no lo encuentra
+ */
+async function buscarUsuario(usuario) {
+  try {
+    const [rows] = await pool.query('SELECT * FROM usuarios WHERE usuario = ?', [usuario]);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Error al consultar el usuario en MySQL:', error.message);
+    throw error;
   }
 }
 
 /**
- * Obtiene la lista completa de usuarios almacenados.
- * @returns {Array<{usuario: string, password: string}>}
+ * Registra un nuevo usuario en la base de datos
+ * @param {Object} datosUsuario - Objeto con { usuario, password }
  */
-function obtenerUsuarios() {
-  asegurarArchivo();
-  const contenido = fs.readFileSync(RUTA_ARCHIVO, 'utf-8');
-  return JSON.parse(contenido || '[]');
+async function guardarUsuario({ usuario, password }) {
+  try {
+    await pool.query(
+      'INSERT INTO usuarios (usuario, password) VALUES (?, ?)',
+      [usuario, password]
+    );
+  } catch (error) {
+    console.error('Error al guardar el usuario en MySQL:', error.message);
+    throw error;
+  }
 }
 
-/**
- * Busca un usuario por su nombre de usuario.
- * @param {string} usuario
- * @returns {Object|undefined} el usuario encontrado o undefined
- */
-function buscarUsuario(usuario) {
-  const usuarios = obtenerUsuarios();
-  return usuarios.find(u => u.usuario === usuario);
-}
 
-/**
- * Guarda un nuevo usuario en el archivo JSON.
- * @param {{usuario: string, password: string}} nuevoUsuario
- */
-function guardarUsuario(nuevoUsuario) {
-  const usuarios = obtenerUsuarios();
-  usuarios.push(nuevoUsuario);
-  fs.writeFileSync(RUTA_ARCHIVO, JSON.stringify(usuarios, null, 2), 'utf-8');
-}
 
-module.exports = { obtenerUsuarios, buscarUsuario, guardarUsuario };
+module.exports = {
+  buscarUsuario,
+  guardarUsuario
+};

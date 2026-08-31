@@ -1,22 +1,15 @@
 // server.js
 // -----------------------------------------------------------------------
 // Evidencia GA7-220501096-AA5-EV01
-// Diseño y desarrollo de servicios web - caso.
-//
-// Servicio web REST que expone dos endpoints:
-//   1) POST /registro  -> Registra un nuevo usuario (usuario + contraseña)
-//   2) POST /login     -> Autentica un usuario existente
-//
-// Se construyó usando únicamente módulos nativos de Node.js (http),
-// por lo que no requiere instalar dependencias externas para funcionar.
+// Servicio web REST conectado a la base de datos en Railway (MySQL)
 // -----------------------------------------------------------------------
 
 const http = require('http');
 const { hashPassword, verifyPassword } = require('./passwordUtils');
 const { buscarUsuario, guardarUsuario } = require('./userRepository');
+const { obtenerProductos, obtenerProductoPorId, eliminarProducto, crearProducto, actualizarProducto } = require('./productRepository');
 
 const PUERTO = process.env.PORT || 3000;
-
 /**
  * Función auxiliar para leer y parsear el cuerpo (body) de una petición
  * HTTP que llega en formato JSON.
@@ -31,7 +24,6 @@ function leerCuerpoJSON(req) {
 
     req.on('end', () => {
       try {
-        // Si no envían body, devolvemos un objeto vacío
         resolve(datos ? JSON.parse(datos) : {});
       } catch (error) {
         reject(new Error('El cuerpo de la petición no es un JSON válido'));
@@ -53,7 +45,7 @@ function enviarRespuesta(res, statusCode, objeto) {
 
 /**
  * Lógica del endpoint de REGISTRO.
- * Recibe { usuario, password } y crea un nuevo usuario si no existe.
+ * Recibe { usuario, password } y crea un nuevo usuario en la BD de Railway.
  */
 async function manejarRegistro(req, res) {
   try {
@@ -66,29 +58,29 @@ async function manejarRegistro(req, res) {
       });
     }
 
-    // Verificamos que el usuario no exista previamente
-    if (buscarUsuario(usuario)) {
+    // Verificamos de forma asíncrona si el usuario ya existe en Railway
+    const usuarioExistente = await buscarUsuario(usuario);
+    if (usuarioExistente) {
       return enviarRespuesta(res, 409, {
         mensaje: 'El usuario ya se encuentra registrado.'
       });
     }
 
-    // Guardamos la contraseña de forma segura (hasheada), nunca en texto plano
+    // Guardamos la contraseña de forma segura (hasheada)
     const passwordHasheada = hashPassword(password);
-    guardarUsuario({ usuario, password: passwordHasheada });
+    await guardarUsuario({ usuario, password: passwordHasheada });
 
     return enviarRespuesta(res, 201, {
       mensaje: 'Usuario registrado exitosamente.'
     });
   } catch (error) {
-    return enviarRespuesta(res, 400, { mensaje: error.message });
+    return enviarRespuesta(res, 500, { mensaje: error.message });
   }
 }
 
 /**
  * Lógica del endpoint de LOGIN (inicio de sesión).
- * Recibe { usuario, password } y valida las credenciales contra
- * lo almacenado en el repositorio de usuarios.
+ * Recibe { usuario, password } y valida las credenciales contra Railway.
  */
 async function manejarLogin(req, res) {
   try {
@@ -100,7 +92,8 @@ async function manejarLogin(req, res) {
       });
     }
 
-    const usuarioEncontrado = buscarUsuario(usuario);
+    // Buscamos de forma asíncrona en la BD de Railway
+    const usuarioEncontrado = await buscarUsuario(usuario);
 
     // Si el usuario no existe, la autenticación falla
     if (!usuarioEncontrado) {
@@ -122,20 +115,103 @@ async function manejarLogin(req, res) {
       });
     }
   } catch (error) {
-    return enviarRespuesta(res, 400, { mensaje: error.message });
+    return enviarRespuesta(res, 500, { mensaje: error.message });
   }
 }
+
+// --- MANEJADORES DE PRODUCTOS ---
+async function manejarObtenerProductos(req, res) {
+  try {
+    const productos = await obtenerProductos();
+    return enviarRespuesta(res, 200, productos);
+  } catch (error) {
+    return enviarRespuesta(res, 500, { mensaje: error.message });
+  }
+}
+
+async function manejarObtenerProductoPorId(req, res, id) {
+  try {
+    const producto = await obtenerProductoPorId(id);
+    if (!producto) {
+      return enviarRespuesta(res, 404, { mensaje: 'Producto no encontrado.' });
+    }
+    return enviarRespuesta(res, 200, producto);
+  } catch (error) {
+    return enviarRespuesta(res, 500, { mensaje: error.message });
+  }
+}
+
+async function manejarCrearProducto(req, res) {
+  try {
+    const datos = await leerCuerpoJSON(req);
+    if (!datos.nombre_producto || !datos.precio) {
+      return enviarRespuesta(res, 400, { mensaje: 'El nombre_producto y precio son obligatorios.' });
+    }
+    const idNuevo = await crearProducto(datos);
+    return enviarRespuesta(res, 201, {
+      mensaje: 'Producto creado exitosamente.',
+      id_producto: idNuevo
+    });
+  } catch (error) {
+    return enviarRespuesta(res, 500, { mensaje: error.message });
+  }
+}
+
+async function manejarEliminarProducto(req, res, id) {
+  try {
+    const eliminado = await eliminarProducto(id);
+    if (!eliminado) {
+      return enviarRespuesta(res, 404, { mensaje: 'Producto no encontrado o ya eliminado.' });
+    }
+    return enviarRespuesta(res, 200, { mensaje: 'Producto eliminado exitosamente.' });
+  } catch (error) {
+    return enviarRespuesta(res, 500, { mensaje: error.message });
+  }
+}
+
+async function manejarActualizarProducto(req, res, id) {
+  try {
+    const datos = await leerCuerpoJSON(req);
+    if (!datos.nombre_producto || !datos.precio) {
+      return enviarRespuesta(res, 400, { mensaje: 'El nombre_producto y precio son obligatorios.' });
+    }
+    const actualizado = await actualizarProducto(id, datos);
+    if (!actualizado) {
+      return enviarRespuesta(res, 404, { mensaje: 'Producto no encontrado.' });
+    }
+    return enviarRespuesta(res, 200, { mensaje: 'Producto actualizado exitosamente.' });
+  } catch (error) {
+    return enviarRespuesta(res, 500, { mensaje: error.message });
+  }
+}
+
+
 
 // Creamos el servidor HTTP y enrutamos las peticiones según método y ruta
 const servidor = http.createServer(async (req, res) => {
   const { method, url } = req;
 
+  // Validación de rutas con ID numérico (ejemplo: /productos/1)
+  const coincidenciaProductoId = url.match(/^\/productos\/(\d+)$/);
+
   if (method === 'POST' && url === '/registro') {
     await manejarRegistro(req, res);
   } else if (method === 'POST' && url === '/login') {
     await manejarLogin(req, res);
+  } else if (method === 'GET' && url === '/productos') {
+    await manejarObtenerProductos(req, res);
+  } else if (method === 'POST' && url === '/productos') {
+    await manejarCrearProducto(req, res);
+  } else if (method === 'GET' && coincidenciaProductoId) {
+    const id = coincidenciaProductoId[1];
+    await manejarObtenerProductoPorId(req, res, id);
+  } else if (method === 'DELETE' && coincidenciaProductoId) {
+    const id = coincidenciaProductoId[1];
+    await manejarEliminarProducto(req, res, id);
+  } else if (method === 'PUT' && coincidenciaProductoId) {
+    const id = coincidenciaProductoId[1];
+    await manejarActualizarProducto(req, res, id);
   } else {
-    // Cualquier otra ruta/método no soportado
     enviarRespuesta(res, 404, { mensaje: 'Ruta no encontrada.' });
   }
 });
@@ -143,6 +219,11 @@ const servidor = http.createServer(async (req, res) => {
 servidor.listen(PUERTO, () => {
   console.log(`Servicio web escuchando en http://localhost:${PUERTO}`);
   console.log('Endpoints disponibles:');
-  console.log('  POST /registro  { "usuario": "...", "password": "..." }');
-  console.log('  POST /login     { "usuario": "...", "password": "..." }');
+  console.log('  POST /registro   { "usuario": "...", "password": "..." }');
+  console.log('  POST /login      { "usuario": "...", "password": "..." }');
+  console.log('  GET  /productos');
+  console.log('  POST /productos  { "nombre_producto": "...", ... }');
+  console.log('  GET    /productos/:id');
+  console.log('  DELETE /productos/:id');
+  console.log('  UPDATE /productos/:id');
 });
