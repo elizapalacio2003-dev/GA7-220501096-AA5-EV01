@@ -191,6 +191,25 @@ async function manejarActualizarProducto(req, res, id) {
 const servidor = http.createServer(async (req, res) => {
   const { method, url } = req;
 
+  // --------------------------------------------------------------------
+  // CORS: habilita que el frontend (que corre en OTRO origen: file://,
+  // 127.0.0.1:5500, un dominio de Netlify/Vercel, etc.) pueda llamar a
+  // esta API. Sin esto, el navegador bloquea la petición antes de que
+  // llegue a tus rutas (por eso veías "blocked by CORS policy").
+  // --------------------------------------------------------------------
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // El navegador manda automáticamente una petición OPTIONS (preflight)
+  // ANTES del POST/PUT/DELETE real, para preguntar si tiene permiso.
+  // Hay que responderla de inmediato con 204 y sin cuerpo, sin pasar
+  // por la lógica de tus rutas.
+  if (method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
+
   // Validación de rutas con ID numérico (ejemplo: /productos/1)
   const coincidenciaProductoId = url.match(/^\/productos\/(\d+)$/);
 

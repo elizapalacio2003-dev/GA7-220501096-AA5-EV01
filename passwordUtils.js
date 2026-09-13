@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------
 
 const crypto = require('crypto');
-
 /**
  * Genera un hash seguro de la contraseña usando scrypt + una sal (salt)
  * aleatoria. La sal evita que dos contraseñas iguales generen el mismo
